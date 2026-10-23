@@ -21,10 +21,13 @@ def _header(repo_root: str, day: date) -> str:
 
 
 def append(repo_root: str, day: date, paragraph: str) -> None:
+    """Despite the name (kept for API stability), this prepends: the newest
+    entry is written first so opening devbrief.log directly shows the latest
+    brief at the top, without having to scroll to the bottom."""
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with LOG_PATH.open("a") as f:
-        f.write(_header(repo_root, day) + "\n")
-        f.write(paragraph.strip() + "\n\n")
+    new_entry = _header(repo_root, day) + "\n" + paragraph.strip() + "\n\n"
+    existing = LOG_PATH.read_text() if LOG_PATH.exists() else ""
+    LOG_PATH.write_text(new_entry + existing)
 
 
 def read_all() -> list[LogEntry]:
@@ -64,8 +67,10 @@ def read_filtered(project: str | None = None, since: date | None = None, limit: 
 
 
 def _rewrite(entries: list[LogEntry]) -> None:
+    """Keeps the same newest-first order `append` writes, so a prune never
+    flips the file's order back to oldest-first."""
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    entries.sort(key=lambda e: e.entry_date)
+    entries.sort(key=lambda e: e.entry_date, reverse=True)
     with LOG_PATH.open("w") as f:
         for e in entries:
             f.write(_header(e.repo_root, e.entry_date) + "\n")
