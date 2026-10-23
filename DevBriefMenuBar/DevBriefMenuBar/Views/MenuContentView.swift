@@ -7,6 +7,7 @@ struct MenuContentView: View {
     @State private var jobLoaded = false
     @State private var statusMessage: String?
     @State private var selectedDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+    @State private var showPromptEditor = false
 
     private static let isoFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -66,6 +67,7 @@ struct MenuContentView: View {
             Divider()
 
             Button("Open Log File") { openLogFile() }
+            Button("Edit Prompt…") { showPromptEditor = true }
             Button("Clear All Data", role: .destructive) { clearAll() }
 
             Divider()
@@ -77,6 +79,9 @@ struct MenuContentView: View {
         .padding(12)
         .frame(width: 320)
         .onAppear { refresh() }
+        .sheet(isPresented: $showPromptEditor) {
+            PromptEditorView()
+        }
     }
 
     private func refresh() {

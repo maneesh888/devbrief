@@ -61,6 +61,10 @@ enum DevBriefCLI {
         try run(["clear", "--yes"])
     }
 
+    static func defaultPrompt() throws -> String {
+        try run(["prompt"]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     static func fetchLog(limit: Int = 10) throws -> [LogEntry] {
         let output = try run(["log", "--limit", "\(limit)"])
         return parseLogOutput(output)
