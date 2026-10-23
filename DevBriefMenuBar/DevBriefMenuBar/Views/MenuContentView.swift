@@ -1,0 +1,135 @@
+import AppKit
+import SwiftUI
+
+struct MenuContentView: View {
+    @State private var entries: [LogEntry] = []
+    @State private var isGenerating = false
+    @State private var jobLoaded = false
+    @State private var statusMessage: String?
+    @State private var selectedDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+
+    private static let isoFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = .current
+        return f
+    }()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("devbrief").font(.headline)
+
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+
+            Divider()
+
+            HStack {
+                Text("Date").foregroundStyle(.secondary)
+                Spacer()
+                DatePicker("", selection: $selectedDate, in: ...Date(), displayedComponents: .date)
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    .fixedSize()
+            }
+
+            Button(isGenerating ? "Generating…" : "Generate") {
+                generateNow()
+            }
+            .disabled(isGenerating)
+            .frame(maxWidth: .infinity)
+
+            Toggle("Daily automatic run", isOn: Binding(
+                get: { jobLoaded },
+                set: { toggleJob($0) }
+            ))
+
+            Divider()
+
+            Text("Recent entries").font(.subheadline).foregroundStyle(.secondary)
+            if entries.isEmpty {
+                Text("(none yet)").font(.caption).foregroundStyle(.secondary)
+            } else {
+                ForEach(entries.prefix(5)) { entry in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(entry.date) · \(entry.project)").font(.caption).bold()
+                        Text(entry.text).font(.caption).lineLimit(3)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+
+            Divider()
+
+            Button("Open Log File") { openLogFile() }
+            Button("Clear All Data", role: .destructive) { clearAll() }
+
+            Divider()
+
+            Button("Quit") {
+                NSApplication.shared.terminate(nil)
+            }
+        }
+        .padding(12)
+        .frame(width: 320)
+        .onAppear { refresh() }
+    }
+
+    private func refresh() {
+        jobLoaded = LaunchAgentController.isLoaded()
+        do {
+            entries = try DevBriefCLI.fetchLog(limit: 5)
+            statusMessage = nil
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    private func generateNow() {
+        isGenerating = true
+        statusMessage = nil
+        let dateString = Self.isoFormatter.string(from: selectedDate)
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                _ = try DevBriefCLI.generate(date: dateString)
+                DispatchQueue.main.async {
+                    isGenerating = false
+                    refresh()
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    isGenerating = false
+                    statusMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func toggleJob(_ newValue: Bool) {
+        do {
+            try LaunchAgentController.setLoaded(newValue)
+            jobLoaded = newValue
+            statusMessage = nil
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    private func openLogFile() {
+        let path = NSHomeDirectory() + "/.devbrief/devbrief.log"
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    }
+
+    private func clearAll() {
+        do {
+            try DevBriefCLI.clearAll()
+            refresh()
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+}
