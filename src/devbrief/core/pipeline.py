@@ -1,8 +1,9 @@
 from datetime import date, datetime
 from pathlib import Path
 
-from devbrief.core import checkpoint, discovery, gitlog, log_writer, transcripts
+from devbrief.core import checkpoint, gitlog, log_writer, source_config
 from devbrief.core.config import RETENTION_DAYS
+from devbrief.core.sources import REGISTRY
 from devbrief.core.summarizer import summarize
 
 
@@ -10,32 +11,52 @@ def today_local() -> date:
     return datetime.now().astimezone().date()
 
 
-def _resolve_projects(project: str | None) -> dict[str, list[Path]]:
-    projects = discovery.discover_projects()
+def discover_all_sources() -> dict[str, dict[str, list[Path]]]:
+    """Returns {repo_root: {source_name: [files]}} merged across every
+    *enabled* source (devbrief.core.source_config)."""
+    combined: dict[str, dict[str, list[Path]]] = {}
+    for name in source_config.enabled_names():
+        module = REGISTRY[name]
+        for repo_root, files in module.discover_projects().items():
+            combined.setdefault(repo_root, {})[name] = files
+    return combined
+
+
+def _resolve_projects(project: str | None) -> dict[str, dict[str, list[Path]]]:
+    projects = discover_all_sources()
     if project:
         projects = {
-            root: files for root, files in projects.items()
+            root: sources_files for root, sources_files in projects.items()
             if project in (root, Path(root).name)
         }
     return projects
 
 
-def generate_brief_for_project(repo_root: str, day: date, jsonl_files: list[Path] | None = None) -> dict:
+def generate_brief_for_project(
+    repo_root: str, day: date, sources_files: dict[str, list[Path]] | None = None
+) -> dict:
     if checkpoint.is_processed(repo_root, day):
         return {"repo_root": repo_root, "date": day.isoformat(), "status": "already_processed"}
 
-    if jsonl_files is None:
-        jsonl_files = discovery.discover_projects().get(repo_root, [])
+    if sources_files is None:
+        sources_files = discover_all_sources().get(repo_root, {})
 
     commits = gitlog.commits_for_day(repo_root, day)
-    messages = transcripts.extract_day_text(jsonl_files, day)
+
+    messages: list[dict] = []
+    branch: str | None = None
+    for name, files in sources_files.items():
+        module = REGISTRY[name]
+        messages.extend(module.extract_day_text(files, day))
+        if branch is None and hasattr(module, "dominant_branch"):
+            branch = module.dominant_branch(files, day)
+    messages.sort(key=lambda e: e["time"])
 
     if not commits and not messages:
         checkpoint.mark(repo_root, day, status="skipped_no_activity")
         return {"repo_root": repo_root, "date": day.isoformat(), "status": "skipped_no_activity"}
 
     repo_name = Path(repo_root).name
-    branch = transcripts.dominant_branch(jsonl_files, day)
     try:
         text = summarize(repo_name, commits, messages, branch=branch)
     except Exception as e:
@@ -54,8 +75,8 @@ def generate_brief_for_project(repo_root: str, day: date, jsonl_files: list[Path
 def run_daily(day: date | None = None, project: str | None = None) -> list[dict]:
     day = day or today_local()
     return [
-        generate_brief_for_project(repo_root, day, jsonl_files)
-        for repo_root, jsonl_files in _resolve_projects(project).items()
+        generate_brief_for_project(repo_root, day, sources_files)
+        for repo_root, sources_files in _resolve_projects(project).items()
     ]
 
 

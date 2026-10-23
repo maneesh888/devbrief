@@ -2,7 +2,7 @@ import argparse
 import sys
 from datetime import date
 
-from devbrief.core import discovery, log_writer, pipeline, summarizer
+from devbrief.core import log_writer, pipeline, source_config, summarizer
 
 
 def _cmd_generate(args) -> int:
@@ -34,13 +34,29 @@ def _cmd_log(args) -> int:
 
 
 def _cmd_projects(args) -> int:
-    for repo_root, files in sorted(discovery.discover_projects().items()):
-        print(f"{repo_root}  ({len(files)} session file(s))")
+    for repo_root, sources_files in sorted(pipeline.discover_all_sources().items()):
+        breakdown = ", ".join(f"{name}: {len(files)}" for name, files in sorted(sources_files.items()))
+        print(f"{repo_root}  ({breakdown})")
     return 0
 
 
 def _cmd_prompt(args) -> int:
     print(summarizer.DEFAULT_SYSTEM_PROMPT)
+    return 0
+
+
+def _cmd_sources_list(args) -> int:
+    for name, enabled in sorted(source_config.load().items()):
+        print(f"{'[x]' if enabled else '[ ]'} {name}")
+    return 0
+
+
+def _cmd_sources_set(args) -> int:
+    try:
+        source_config.set_enabled(args.name, args.state == "on")
+    except ValueError as e:
+        print(f"devbrief: {e}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -75,6 +91,17 @@ def main() -> int:
 
     p_prompt = sub.add_parser("prompt", help="Print the built-in default summary prompt")
     p_prompt.set_defaults(func=_cmd_prompt)
+
+    p_sources = sub.add_parser("sources", help="List or toggle which AI tools' sessions to read")
+    sources_sub = p_sources.add_subparsers(dest="sources_command", required=True)
+
+    p_sources_list = sources_sub.add_parser("list", help="Show which sources are enabled")
+    p_sources_list.set_defaults(func=_cmd_sources_list)
+
+    p_sources_set = sources_sub.add_parser("set", help="Enable or disable a source")
+    p_sources_set.add_argument("name", choices=sorted(source_config.DEFAULT_SOURCES))
+    p_sources_set.add_argument("state", choices=["on", "off"])
+    p_sources_set.set_defaults(func=_cmd_sources_set)
 
     p_clear = sub.add_parser("clear", help="Wipe the log and checkpoint state")
     p_clear.add_argument("--yes", action="store_true", help="Skip the confirmation prompt")
