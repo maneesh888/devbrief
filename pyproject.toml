@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "devbrief"
+version = "0.1.0"
+description = "Generates daily dev-work briefs from git commits and Claude Code session history, via the claude CLI"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+devbrief = "devbrief.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "integration: reads real machine state under ~/.claude/projects (opt-in, run with -m integration)",
+]
