@@ -6,7 +6,12 @@ struct MenuContentView: View {
     @State private var isGenerating = false
     @State private var jobLoaded = false
     @State private var statusMessage: String?
-    @State private var selectedDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+    @State private var fromDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+    @State private var toDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+    @State private var generateProgress: (done: Int, total: Int)?
+    @State private var previewOnly = false
+    @State private var previewEntries: [LogEntry] = []
+    @State private var showPreviewResults = false
     @State private var showPromptEditor = false
     @State private var sourceStates: [String: Bool] = [:]
 
@@ -38,19 +43,37 @@ struct MenuContentView: View {
             Divider()
 
             HStack {
-                Text("Date").foregroundStyle(.secondary)
-                Spacer()
-                DatePicker("", selection: $selectedDate, in: ...Date(), displayedComponents: .date)
+                Text("From").foregroundStyle(.secondary)
+                DatePicker("", selection: $fromDate, in: ...Date(), displayedComponents: .date)
                     .datePickerStyle(.compact)
                     .labelsHidden()
                     .fixedSize()
+                    .onChange(of: fromDate) { _, newValue in
+                        if newValue > toDate { toDate = newValue }
+                    }
+                Spacer()
+                Text("To").foregroundStyle(.secondary)
+                DatePicker("", selection: $toDate, in: ...Date(), displayedComponents: .date)
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    .fixedSize()
+                    .onChange(of: toDate) { _, newValue in
+                        if newValue < fromDate { fromDate = newValue }
+                    }
             }
 
-            Button(isGenerating ? "Generating…" : "Generate") {
-                generateNow()
+            HStack {
+                Button(generateButtonTitle) {
+                    generateNow()
+                }
+                .disabled(isGenerating)
+
+                Spacer()
+
+                Toggle("Preview only", isOn: $previewOnly)
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
             }
-            .disabled(isGenerating)
-            .frame(maxWidth: .infinity)
 
             Toggle("Daily automatic run", isOn: Binding(
                 get: { jobLoaded },
@@ -105,6 +128,9 @@ struct MenuContentView: View {
         .sheet(isPresented: $showPromptEditor) {
             PromptEditorView()
         }
+        .sheet(isPresented: $showPreviewResults) {
+            PreviewResultsView(entries: previewEntries)
+        }
     }
 
     private func refresh() {
@@ -139,21 +165,60 @@ struct MenuContentView: View {
         )
     }
 
+    private var generateButtonTitle: String {
+        guard isGenerating else { return "Generate" }
+        guard let generateProgress, generateProgress.total > 1 else { return "Generating…" }
+        return "Generating… (\(generateProgress.done)/\(generateProgress.total))"
+    }
+
+    private func datesInRange() -> [Date] {
+        var dates: [Date] = []
+        var day = Calendar.current.startOfDay(for: fromDate)
+        let lastDay = Calendar.current.startOfDay(for: toDate)
+        while day <= lastDay {
+            dates.append(day)
+            guard let next = Calendar.current.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        return dates
+    }
+
     private func generateNow() {
+        let days = datesInRange()
+        let preview = previewOnly
         isGenerating = true
+        generateProgress = (0, days.count)
         statusMessage = nil
-        let dateString = Self.isoFormatter.string(from: selectedDate)
         DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                _ = try DevBriefCLI.generate(date: dateString)
-                DispatchQueue.main.async {
-                    isGenerating = false
-                    refresh()
+            var collectedPreviewEntries: [LogEntry] = []
+            for (index, day) in days.enumerated() {
+                let dateString = Self.isoFormatter.string(from: day)
+                do {
+                    if preview {
+                        collectedPreviewEntries += try DevBriefCLI.preview(date: dateString)
+                    } else {
+                        _ = try DevBriefCLI.generate(date: dateString)
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        isGenerating = false
+                        generateProgress = nil
+                        statusMessage = error.localizedDescription
+                    }
+                    return
                 }
-            } catch {
                 DispatchQueue.main.async {
-                    isGenerating = false
-                    statusMessage = error.localizedDescription
+                    generateProgress = (index + 1, days.count)
+                }
+            }
+            DispatchQueue.main.async {
+                isGenerating = false
+                generateProgress = nil
+                if preview {
+                    previewEntries = collectedPreviewEntries
+                    showPreviewResults = true
+                } else {
+                    refresh()
                 }
             }
         }
