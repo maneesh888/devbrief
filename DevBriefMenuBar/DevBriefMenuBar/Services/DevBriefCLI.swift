@@ -57,10 +57,6 @@ enum DevBriefCLI {
         return try run(args)
     }
 
-    static func clearAll() throws {
-        try run(["clear", "--yes"])
-    }
-
     /// Dry run: same as `generate`, but devbrief never touches the log or
     /// checkpoint. Output is in the same format as `log`, so it's parsed
     /// the same way.
@@ -68,6 +64,10 @@ enum DevBriefCLI {
         var args = ["generate", "--preview"]
         if let date { args += ["--date", date] }
         return parseLogOutput(try run(args))
+    }
+
+    static func clearAll() throws {
+        try run(["clear", "--yes"])
     }
 
     static func defaultPrompt() throws -> String {

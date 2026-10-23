@@ -113,14 +113,18 @@ struct MenuContentView: View {
             Divider()
 
             Button("Open Log File") { openLogFile() }
+                .frame(maxWidth: .infinity, alignment: .leading)
             Button("Edit Prompt…") { showPromptEditor = true }
+                .frame(maxWidth: .infinity, alignment: .leading)
             Button("Clear All Data", role: .destructive) { clearAll() }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             Divider()
 
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(12)
         .frame(width: 320)
