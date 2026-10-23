@@ -126,6 +126,75 @@ def test_run_daily_only_queries_enabled_sources(monkeypatch, tmp_path):
     assert [r["repo_root"] for r in results] == ["/fake/repo"]
 
 
+def test_preview_does_not_touch_checkpoint_or_log(monkeypatch, tmp_path):
+    _patch_state(monkeypatch, tmp_path)
+    today = pipeline.today_local()
+    monkeypatch.setattr(pipeline.gitlog, "commits_for_day", lambda repo, day: [{"subject": "did a thing"}])
+    monkeypatch.setattr(
+        pipeline.REGISTRY["claude_code"], "extract_day_text",
+        lambda files, day: [{"text": "worked on X", "time": None}],
+    )
+    monkeypatch.setattr(pipeline, "summarize", lambda repo_name, commits, messages, branch=None: "Worked on X today.")
+
+    result = pipeline.preview_brief_for_project("/fake/repo", today, sources_files={"claude_code": []})
+    assert result["status"] == "previewed"
+    assert result["text"] == "Worked on X today."
+    assert checkpoint.is_processed("/fake/repo", today) is False
+    assert log_writer.read_all() == []
+
+
+def test_preview_skips_when_no_activity_without_marking_checkpoint(monkeypatch, tmp_path):
+    _patch_state(monkeypatch, tmp_path)
+    monkeypatch.setattr(pipeline.gitlog, "commits_for_day", lambda repo, day: [])
+
+    result = pipeline.preview_brief_for_project("/fake/repo", date(2026, 1, 15), sources_files={})
+    assert result["status"] == "skipped_no_activity"
+    assert checkpoint.is_processed("/fake/repo", date(2026, 1, 15)) is False
+
+
+def test_preview_runs_even_when_already_generated(monkeypatch, tmp_path):
+    _patch_state(monkeypatch, tmp_path)
+    today = pipeline.today_local()
+    checkpoint.mark("/fake/repo", today, status="generated")
+    monkeypatch.setattr(pipeline.gitlog, "commits_for_day", lambda repo, day: [{"subject": "did a thing"}])
+    monkeypatch.setattr(
+        pipeline.REGISTRY["claude_code"], "extract_day_text",
+        lambda files, day: [{"text": "worked on X", "time": None}],
+    )
+    monkeypatch.setattr(pipeline, "summarize", lambda repo_name, commits, messages, branch=None: "Worked on X today.")
+
+    # Unlike generate_brief_for_project, preview ignores the checkpoint entirely.
+    result = pipeline.preview_brief_for_project("/fake/repo", today, sources_files={"claude_code": []})
+    assert result["status"] == "previewed"
+
+
+def test_preview_marks_error_without_touching_checkpoint(monkeypatch, tmp_path):
+    _patch_state(monkeypatch, tmp_path)
+
+    def boom(repo_name, commits, messages, branch=None):
+        raise RuntimeError("claude CLI not found")
+
+    monkeypatch.setattr(pipeline.gitlog, "commits_for_day", lambda repo, day: [{"subject": "did a thing"}])
+    monkeypatch.setattr(pipeline, "summarize", boom)
+
+    result = pipeline.preview_brief_for_project("/fake/repo", date(2026, 1, 15), sources_files={})
+    assert result["status"] == "error"
+    assert checkpoint.is_processed("/fake/repo", date(2026, 1, 15)) is False
+
+
+def test_preview_daily_filters_by_project(monkeypatch, tmp_path):
+    _patch_state(monkeypatch, tmp_path)
+    monkeypatch.setattr(pipeline.source_config, "enabled_names", lambda: ["claude_code"])
+    monkeypatch.setattr(
+        pipeline.REGISTRY["claude_code"], "discover_projects",
+        lambda: {"/fake/repo-a": [], "/fake/repo-b": []},
+    )
+    monkeypatch.setattr(pipeline.gitlog, "commits_for_day", lambda repo, day: [])
+
+    results = pipeline.preview_daily(day=date(2026, 1, 15), project="repo-a")
+    assert [r["repo_root"] for r in results] == ["/fake/repo-a"]
+
+
 def test_clear_all_data_removes_log_and_checkpoint(monkeypatch, tmp_path):
     _patch_state(monkeypatch, tmp_path)
     checkpoint.mark("/fake/repo", date(2026, 1, 15), status="generated")

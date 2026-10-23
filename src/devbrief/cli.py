@@ -1,12 +1,15 @@
 import argparse
 import sys
 from datetime import date
+from pathlib import Path
 
 from devbrief.core import log_writer, pipeline, source_config, summarizer
 
 
 def _cmd_generate(args) -> int:
     day = date.fromisoformat(args.date) if args.date else pipeline.today_local()
+    if args.preview:
+        return _cmd_generate_preview(args, day)
     try:
         results = pipeline.run_daily(day=day, project=args.project or None)
     except Exception as e:
@@ -17,6 +20,26 @@ def _cmd_generate(args) -> int:
     # Per-project failures (status == "error") are captured in the checkpoint
     # and auto-retried next run; they don't fail the process, so one bad repo
     # never blocks launchd from considering the whole job successful.
+    return 0
+
+
+def _cmd_generate_preview(args, day: date) -> int:
+    """Never touches the checkpoint or devbrief.log. Prints each previewed
+    brief in the same '=== date | repo | root ===' format `devbrief log`
+    uses, so callers (including the menu bar app) can reuse that parser."""
+    try:
+        results = pipeline.preview_daily(day=day, project=args.project or None)
+    except Exception as e:
+        print(f"devbrief: orchestration failed: {e}", file=sys.stderr)
+        return 1
+    for r in results:
+        if r["status"] != "previewed":
+            print(f"{r['repo_root']}: {r['status']}", file=sys.stderr)
+            continue
+        repo_name = Path(r["repo_root"]).name
+        print(f"=== {r['date']} | {repo_name} | {r['repo_root']} ===")
+        print(r["text"])
+        print()
     return 0
 
 
@@ -78,6 +101,7 @@ def main() -> int:
     p_generate = sub.add_parser("generate", help="Generate today's (or a given day's) briefs")
     p_generate.add_argument("--date", default="", help="YYYY-MM-DD, defaults to today (local time)")
     p_generate.add_argument("--project", default="", help="Absolute repo path or basename; empty = all discovered projects")
+    p_generate.add_argument("--preview", action="store_true", help="Dry run: print the brief(s) without saving to the log or checkpoint")
     p_generate.set_defaults(func=_cmd_generate)
 
     p_log = sub.add_parser("log", help="View recent entries")

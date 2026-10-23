@@ -32,12 +32,11 @@ def _resolve_projects(project: str | None) -> dict[str, dict[str, list[Path]]]:
     return projects
 
 
-def generate_brief_for_project(
-    repo_root: str, day: date, sources_files: dict[str, list[Path]] | None = None
-) -> dict:
-    if checkpoint.is_processed(repo_root, day):
-        return {"repo_root": repo_root, "date": day.isoformat(), "status": "already_processed"}
-
+def _gather_evidence(
+    repo_root: str, day: date, sources_files: dict[str, list[Path]] | None
+) -> tuple[list[dict], list[dict], str | None]:
+    """Shared by generate and preview: commits, merged+sorted messages across
+    every source that has files for this repo, and the dominant branch."""
     if sources_files is None:
         sources_files = discover_all_sources().get(repo_root, {})
 
@@ -51,6 +50,17 @@ def generate_brief_for_project(
         if branch is None and hasattr(module, "dominant_branch"):
             branch = module.dominant_branch(files, day)
     messages.sort(key=lambda e: e["time"])
+
+    return commits, messages, branch
+
+
+def generate_brief_for_project(
+    repo_root: str, day: date, sources_files: dict[str, list[Path]] | None = None
+) -> dict:
+    if checkpoint.is_processed(repo_root, day):
+        return {"repo_root": repo_root, "date": day.isoformat(), "status": "already_processed"}
+
+    commits, messages, branch = _gather_evidence(repo_root, day, sources_files)
 
     if not commits and not messages:
         checkpoint.mark(repo_root, day, status="skipped_no_activity")
@@ -72,10 +82,40 @@ def generate_brief_for_project(
     }
 
 
+def preview_brief_for_project(
+    repo_root: str, day: date, sources_files: dict[str, list[Path]] | None = None
+) -> dict:
+    """Like generate_brief_for_project, but never reads or writes the
+    checkpoint and never appends to the log — a pure dry run."""
+    commits, messages, branch = _gather_evidence(repo_root, day, sources_files)
+
+    if not commits and not messages:
+        return {"repo_root": repo_root, "date": day.isoformat(), "status": "skipped_no_activity"}
+
+    repo_name = Path(repo_root).name
+    try:
+        text = summarize(repo_name, commits, messages, branch=branch)
+    except Exception as e:
+        return {"repo_root": repo_root, "date": day.isoformat(), "status": "error", "error": str(e)}
+
+    return {
+        "repo_root": repo_root, "date": day.isoformat(), "status": "previewed",
+        "commit_count": len(commits), "message_count": len(messages), "text": text,
+    }
+
+
 def run_daily(day: date | None = None, project: str | None = None) -> list[dict]:
     day = day or today_local()
     return [
         generate_brief_for_project(repo_root, day, sources_files)
+        for repo_root, sources_files in _resolve_projects(project).items()
+    ]
+
+
+def preview_daily(day: date | None = None, project: str | None = None) -> list[dict]:
+    day = day or today_local()
+    return [
+        preview_brief_for_project(repo_root, day, sources_files)
         for repo_root, sources_files in _resolve_projects(project).items()
     ]
 
