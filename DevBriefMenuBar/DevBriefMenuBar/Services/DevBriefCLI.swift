@@ -65,6 +65,23 @@ enum DevBriefCLI {
         try run(["prompt"]).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Parses `devbrief sources list`'s "[x] name" / "[ ] name" lines.
+    static func listSources() throws -> [String: Bool] {
+        let output = try run(["sources", "list"])
+        var result: [String: Bool] = [:]
+        for rawLine in output.split(separator: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("[x]") || line.hasPrefix("[ ]") else { continue }
+            let name = line.dropFirst(3).trimmingCharacters(in: .whitespaces)
+            result[name] = line.hasPrefix("[x]")
+        }
+        return result
+    }
+
+    static func setSource(_ name: String, enabled: Bool) throws {
+        try run(["sources", "set", name, enabled ? "on" : "off"])
+    }
+
     static func fetchLog(limit: Int = 10) throws -> [LogEntry] {
         let output = try run(["log", "--limit", "\(limit)"])
         return parseLogOutput(output)

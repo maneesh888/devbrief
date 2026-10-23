@@ -8,6 +8,14 @@ struct MenuContentView: View {
     @State private var statusMessage: String?
     @State private var selectedDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
     @State private var showPromptEditor = false
+    @State private var sourceStates: [String: Bool] = [:]
+
+    private static let sourceOrder = ["claude_code", "codex", "copilot"]
+    private static let sourceDisplayNames = [
+        "claude_code": "Claude Code",
+        "codex": "Codex",
+        "copilot": "Copilot",
+    ]
 
     private static let isoFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -49,6 +57,21 @@ struct MenuContentView: View {
                 set: { toggleJob($0) }
             ))
 
+            HStack {
+                Menu("Sources") {
+                    ForEach(Self.sourceOrder, id: \.self) { name in
+                        Toggle(Self.sourceDisplayNames[name] ?? name, isOn: sourceBinding(name))
+                    }
+                }
+                .fixedSize()
+                Spacer()
+                Text(enabledSourcesSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
             Divider()
 
             Text("Recent entries").font(.subheadline).foregroundStyle(.secondary)
@@ -88,10 +111,32 @@ struct MenuContentView: View {
         jobLoaded = LaunchAgentController.isLoaded()
         do {
             entries = try DevBriefCLI.fetchLog(limit: 5)
+            sourceStates = try DevBriefCLI.listSources()
             statusMessage = nil
         } catch {
             statusMessage = error.localizedDescription
         }
+    }
+
+    private var enabledSourcesSummary: String {
+        let enabled = Self.sourceOrder
+            .filter { sourceStates[$0] ?? true }
+            .compactMap { Self.sourceDisplayNames[$0] }
+        return enabled.isEmpty ? "None" : enabled.joined(separator: ", ")
+    }
+
+    private func sourceBinding(_ name: String) -> Binding<Bool> {
+        Binding(
+            get: { sourceStates[name] ?? true },
+            set: { newValue in
+                sourceStates[name] = newValue
+                do {
+                    try DevBriefCLI.setSource(name, enabled: newValue)
+                } catch {
+                    statusMessage = error.localizedDescription
+                }
+            }
+        )
     }
 
     private func generateNow() {
