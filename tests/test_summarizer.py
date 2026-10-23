@@ -119,3 +119,41 @@ def test_summarize_passes_env_with_user_to_subprocess(monkeypatch):
     summarizer.summarize("my-repo", [], [])
     assert captured["env"] is not None
     assert captured["env"].get("USER")
+
+
+def test_load_system_prompt_falls_back_to_default_when_no_override(tmp_path, monkeypatch):
+    monkeypatch.setattr(summarizer.config, "PROMPT_PATH", tmp_path / "prompt_override.txt")
+    assert summarizer._load_system_prompt() == summarizer.DEFAULT_SYSTEM_PROMPT
+
+
+def test_load_system_prompt_falls_back_to_default_when_override_is_blank(tmp_path, monkeypatch):
+    override_path = tmp_path / "prompt_override.txt"
+    override_path.write_text("   \n")
+    monkeypatch.setattr(summarizer.config, "PROMPT_PATH", override_path)
+    assert summarizer._load_system_prompt() == summarizer.DEFAULT_SYSTEM_PROMPT
+
+
+def test_load_system_prompt_uses_override_when_present(tmp_path, monkeypatch):
+    override_path = tmp_path / "prompt_override.txt"
+    override_path.write_text("Write a haiku about the day's commits.")
+    monkeypatch.setattr(summarizer.config, "PROMPT_PATH", override_path)
+    assert summarizer._load_system_prompt() == "Write a haiku about the day's commits."
+
+
+def test_summarize_uses_overridden_prompt(tmp_path, monkeypatch):
+    override_path = tmp_path / "prompt_override.txt"
+    override_path.write_text("Custom prompt text.")
+    monkeypatch.setattr(summarizer.config, "PROMPT_PATH", override_path)
+
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(summarizer.subprocess, "run", fake_run)
+    monkeypatch.setattr(summarizer, "_resolve_claude_bin", lambda: "/fake/bin/claude")
+
+    summarizer.summarize("my-repo", [], [])
+    prompt = captured["cmd"][captured["cmd"].index("-p") + 1]
+    assert prompt.startswith("Custom prompt text.")

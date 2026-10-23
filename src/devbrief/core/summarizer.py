@@ -4,12 +4,14 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from . import config
+
 MODEL = "haiku"
 MAX_MESSAGES = 40
 MAX_MESSAGE_CHARS = 300
 TIMEOUT_SECONDS = 60
 
-SYSTEM_PROMPT = (
+DEFAULT_SYSTEM_PROMPT = (
     "You write a daily status update about one project, for a non-technical senior "
     "manager audience — someone who doesn't read code and doesn't know internal tool "
     "names, acronyms or jargon (e.g. 'S1-S4 severity labels', 'hooks', 'CI pipeline', "
@@ -29,6 +31,17 @@ SYSTEM_PROMPT = (
     "specifics. If evidence is thin or purely exploratory, say so plainly in the "
     "bullets rather than padding with invented detail."
 )
+
+
+def _load_system_prompt() -> str:
+    """The menu-bar app lets the user override the prompt by writing to
+    config.PROMPT_PATH. Fall back to the built-in default if that file is
+    missing or empty."""
+    try:
+        override = config.PROMPT_PATH.read_text().strip()
+    except FileNotFoundError:
+        return DEFAULT_SYSTEM_PROMPT
+    return override or DEFAULT_SYSTEM_PROMPT
 
 
 def _resolve_claude_bin() -> str:
@@ -65,7 +78,7 @@ def summarize(repo_name: str, commits: list[dict], messages: list[dict], branch:
     branch_line = f"Branch: {branch}\n\n" if branch else ""
 
     prompt = (
-        f"{SYSTEM_PROMPT}\n\n"
+        f"{_load_system_prompt()}\n\n"
         f"Project: {repo_name}\n\n"
         f"{branch_line}"
         f"Commits:\n{commit_lines}\n\n"

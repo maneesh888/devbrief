@@ -2,7 +2,7 @@ import argparse
 import sys
 from datetime import date
 
-from devbrief.core import discovery, log_writer, pipeline
+from devbrief.core import discovery, log_writer, pipeline, summarizer
 
 
 def _cmd_generate(args) -> int:
@@ -39,6 +39,11 @@ def _cmd_projects(args) -> int:
     return 0
 
 
+def _cmd_prompt(args) -> int:
+    print(summarizer.DEFAULT_SYSTEM_PROMPT)
+    return 0
+
+
 def _cmd_clear(args) -> int:
     if not args.yes:
         confirm = input("This wipes devbrief.log and checkpoint.json. Type 'yes' to continue: ")
@@ -67,6 +72,9 @@ def main() -> int:
 
     p_projects = sub.add_parser("projects", help="List tracked projects")
     p_projects.set_defaults(func=_cmd_projects)
+
+    p_prompt = sub.add_parser("prompt", help="Print the built-in default summary prompt")
+    p_prompt.set_defaults(func=_cmd_prompt)
 
     p_clear = sub.add_parser("clear", help="Wipe the log and checkpoint state")
     p_clear.add_argument("--yes", action="store_true", help="Skip the confirmation prompt")
