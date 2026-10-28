@@ -12,8 +12,6 @@ struct MenuContentView: View {
     @State private var toDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
     @State private var generateProgress: (done: Int, total: Int)?
     @State private var previewOnly = false
-    @State private var previewEntries: [LogEntry] = []
-    @State private var showPreviewResults = false
     @State private var showPromptEditor = false
     @State private var sourceStates: [String: Bool] = [:]
 
@@ -141,13 +139,11 @@ struct MenuContentView: View {
         .frame(width: 320)
         .onAppear {
             launchAtLogin = SMAppService.mainApp.status == .enabled
+            PreviewFile.cleanUp()
             refresh()
         }
         .sheet(isPresented: $showPromptEditor) {
             PromptEditorView()
-        }
-        .sheet(isPresented: $showPreviewResults) {
-            PreviewResultsView(entries: previewEntries)
         }
     }
 
@@ -233,8 +229,11 @@ struct MenuContentView: View {
                 isGenerating = false
                 generateProgress = nil
                 if preview {
-                    previewEntries = collectedPreviewEntries
-                    showPreviewResults = true
+                    do {
+                        try PreviewFile.open(collectedPreviewEntries)
+                    } catch {
+                        statusMessage = error.localizedDescription
+                    }
                 } else {
                     refresh()
                 }
