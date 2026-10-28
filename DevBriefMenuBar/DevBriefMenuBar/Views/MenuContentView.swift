@@ -17,6 +17,8 @@ struct MenuContentView: View {
     @State private var showPromptEditor = false
     @State private var sourceStates: [String: Bool] = [:]
 
+    private static let entriesHeight: CGFloat = 150
+    private static let entriesShown = 3
     private static let sourceOrder = ["claude_code", "codex", "copilot"]
     private static let sourceDisplayNames = [
         "claude_code": "Claude Code",
@@ -108,13 +110,15 @@ struct MenuContentView: View {
             if entries.isEmpty {
                 Text("(none yet)").font(.caption).foregroundStyle(.secondary)
             } else {
-                ForEach(entries.prefix(5)) { entry in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(entry.date) · \(entry.project)").font(.caption).bold()
-                        Text(entry.text).font(.caption).lineLimit(3)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(DayGroup.group(Array(entries.prefix(Self.entriesShown)))) { group in
+                            DayGroupView(group: group)
+                        }
                     }
-                    .padding(.vertical, 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(height: Self.entriesHeight)
             }
 
             Divider()
