@@ -1,10 +1,12 @@
 import AppKit
+import ServiceManagement
 import SwiftUI
 
 struct MenuContentView: View {
     @State private var entries: [LogEntry] = []
     @State private var isGenerating = false
     @State private var jobLoaded = false
+    @State private var launchAtLogin = false
     @State private var statusMessage: String?
     @State private var fromDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
     @State private var toDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
@@ -80,6 +82,11 @@ struct MenuContentView: View {
                 set: { toggleJob($0) }
             ))
 
+            Toggle("Launch at login", isOn: Binding(
+                get: { launchAtLogin },
+                set: { setLaunchAtLogin($0) }
+            ))
+
             HStack {
                 Menu("Sources") {
                     ForEach(Self.sourceOrder, id: \.self) { name in
@@ -128,7 +135,10 @@ struct MenuContentView: View {
         }
         .padding(12)
         .frame(width: 320)
-        .onAppear { refresh() }
+        .onAppear {
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+            refresh()
+        }
         .sheet(isPresented: $showPromptEditor) {
             PromptEditorView()
         }
@@ -225,6 +235,21 @@ struct MenuContentView: View {
                     refresh()
                 }
             }
+        }
+    }
+
+    private func setLaunchAtLogin(_ newValue: Bool) {
+        do {
+            if newValue {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+            statusMessage = nil
+        } catch {
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+            statusMessage = error.localizedDescription
         }
     }
 
