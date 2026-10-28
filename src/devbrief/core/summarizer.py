@@ -10,26 +10,33 @@ MODEL = "haiku"
 MAX_MESSAGES = 40
 MAX_MESSAGE_CHARS = 300
 TIMEOUT_SECONDS = 60
+NO_WORK_MARKER = "NO_WORK"
 
 DEFAULT_SYSTEM_PROMPT = (
-    "You write a daily status update about one project, for a non-technical senior "
-    "manager audience — someone who doesn't read code and doesn't know internal tool "
-    "names, acronyms or jargon (e.g. 'S1-S4 severity labels', 'hooks', 'CI pipeline', "
-    "'pbxproj'). Translate every technical detail into plain business language: what "
-    "capability or risk it addresses, not what file or flag changed.\n\n"
-    "Structure your answer in exactly this format:\n"
-    "Headline: <one plain-English sentence naming the overall initiative this work "
-    "belongs to — use the branch name as a hint if it's informative (e.g. a branch "
-    "called 'feature/agentic_workflow' is about building an AI-agent-assisted "
-    "development process), but never invent an initiative name the evidence doesn't "
-    "support>\n"
-    "- <bullet 1: a concrete thing accomplished, in plain language>\n"
-    "- <bullet 2>\n"
-    "- <bullet 3, optional, omit if there isn't a genuinely distinct third point>\n"
-    "Why it matters: <one sentence on the business value or risk this reduces>\n\n"
-    "Use ONLY the evidence given (commits, session notes, branch name). Never invent "
-    "specifics. If evidence is thin or purely exploratory, say so plainly in the "
-    "bullets rather than padding with invented detail."
+    "Write timesheet Description entries for one day of work on one project, using "
+    "the commits and session notes given. Describe only what they show. The date "
+    "heading is added separately, so do not write one.\n\n"
+    "Format:\n"
+    "- About six lines, each starting with '- ' (no numbers). Use fewer when the "
+    "evidence is thin; merge near-duplicates rather than padding.\n"
+    "- Each line is one short sentence that can stand alone as a record "
+    "Description, so the day can be split into morning and evening sessions.\n"
+    "- Cover what was built, tested, verified or reviewed, including testing of "
+    "backend APIs where that happened.\n\n"
+    "Style rules:\n"
+    "- Explain the work only. Write positive, factual statements in past tense.\n"
+    "- No negative or filler statements such as 'nothing else was done', 'no "
+    "changes finished', 'not completed', and no blockers.\n"
+    "- Don't mention AI tools, agents, assistants, prompts, skills or workflows built "
+    "around them. If a commit is about such tooling, describe it as development "
+    "process or tooling improvements. Don't add verification steps the commits or "
+    "session notes don't show.\n"
+    "- The session notes are the developer's own chat messages. Use them only as "
+    "evidence of work actually carried out. Questions, requests for information, "
+    "comparisons, explanations and plans are not work done; leave them out.\n"
+    "- Output only the lines, with no headline, heading or closing summary.\n"
+    "- If the evidence shows no concrete work carried out, output exactly "
+    f"{NO_WORK_MARKER} and nothing else, with no explanation."
 )
 
 
@@ -69,6 +76,7 @@ def _build_env() -> dict:
 
 def summarize(repo_name: str, commits: list[dict], messages: list[dict], branch: str | None = None) -> str:
     """Shells out to the `claude` CLI in headless mode to write the brief.
+    Returns "" when the model finds no concrete work to report.
     Uses the caller's existing Claude Code login (no ANTHROPIC_API_KEY needed,
     as long as the process environment doesn't set one)."""
     commit_lines = "\n".join(f"- {c['subject']}" for c in commits) or "(no commits)"
@@ -82,7 +90,7 @@ def summarize(repo_name: str, commits: list[dict], messages: list[dict], branch:
         f"Project: {repo_name}\n\n"
         f"{branch_line}"
         f"Commits:\n{commit_lines}\n\n"
-        f"Notes/requests during the day:\n{msg_lines}"
+        f"Session notes (developer chat messages, background evidence only):\n{msg_lines}"
     )
 
     result = subprocess.run(
@@ -93,4 +101,5 @@ def summarize(repo_name: str, commits: list[dict], messages: list[dict], branch:
     )
     if result.returncode != 0:
         raise RuntimeError(f"claude CLI exited {result.returncode}: {result.stderr.strip()}")
-    return result.stdout.strip()
+    text = result.stdout.strip()
+    return "" if text == NO_WORK_MARKER else text

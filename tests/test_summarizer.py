@@ -157,3 +157,13 @@ def test_summarize_uses_overridden_prompt(tmp_path, monkeypatch):
     summarizer.summarize("my-repo", [], [])
     prompt = captured["cmd"][captured["cmd"].index("-p") + 1]
     assert prompt.startswith("Custom prompt text.")
+
+
+def test_summarize_returns_empty_for_no_work_marker(monkeypatch):
+    class _R:
+        returncode = 0
+        stdout = f"{summarizer.NO_WORK_MARKER}\n"
+        stderr = ""
+
+    monkeypatch.setattr(summarizer.subprocess, "run", lambda *a, **k: _R())
+    assert summarizer.summarize("proj", [], [{"text": "how do I format this?"}]) == ""

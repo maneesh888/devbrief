@@ -73,6 +73,10 @@ def generate_brief_for_project(
         checkpoint.mark(repo_root, day, status="error", error=str(e))
         return {"repo_root": repo_root, "date": day.isoformat(), "status": "error", "error": str(e)}
 
+    if not text:
+        checkpoint.mark(repo_root, day, status="skipped_no_activity")
+        return {"repo_root": repo_root, "date": day.isoformat(), "status": "skipped_no_activity"}
+
     log_writer.append(repo_root, day, text)
     checkpoint.mark(repo_root, day, status="generated", commit_count=len(commits), message_count=len(messages))
     log_writer.prune_older_than(RETENTION_DAYS)
@@ -97,6 +101,9 @@ def preview_brief_for_project(
         text = summarize(repo_name, commits, messages, branch=branch)
     except Exception as e:
         return {"repo_root": repo_root, "date": day.isoformat(), "status": "error", "error": str(e)}
+
+    if not text:
+        return {"repo_root": repo_root, "date": day.isoformat(), "status": "skipped_no_activity"}
 
     return {
         "repo_root": repo_root, "date": day.isoformat(), "status": "previewed",
