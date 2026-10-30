@@ -7,7 +7,7 @@ enum DevBriefCLIError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .binaryNotFound:
-            return "devbrief CLI not found. Set DEVBRIEF_BIN or check the install path."
+            return "devbrief CLI not found. Install it (see the README) so ~/.local/bin/devbrief exists, or set DEVBRIEF_BIN."
         case .nonZeroExit(let code, let stderr):
             return "devbrief exited \(code): \(stderr)"
         }
@@ -15,10 +15,16 @@ enum DevBriefCLIError: Error, LocalizedError {
 }
 
 enum DevBriefCLI {
-    private static let defaultBinPath = "/usr/local/bin/devbrief"
+    private static let candidateBinPaths = [
+        NSHomeDirectory() + "/.local/bin/devbrief",
+        "/opt/homebrew/bin/devbrief",
+        "/usr/local/bin/devbrief",
+    ]
 
     private static func resolveBin() -> String {
-        ProcessInfo.processInfo.environment["DEVBRIEF_BIN"] ?? defaultBinPath
+        if let override = ProcessInfo.processInfo.environment["DEVBRIEF_BIN"] { return override }
+        return candidateBinPaths.first { FileManager.default.isExecutableFile(atPath: $0) }
+            ?? candidateBinPaths[0]
     }
 
     @discardableResult

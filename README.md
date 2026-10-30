@@ -37,9 +37,14 @@ CLAUDE.md/MCP config.
 ## Setup
 
 ```bash
+git clone https://github.com/maneesh888/devbrief.git
 cd devbrief
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
+
+# put the CLI where the menu-bar app and launchd can find it
+mkdir -p ~/.local/bin
+ln -sf "$PWD/.venv/bin/devbrief" ~/.local/bin/devbrief
 ```
 
 `claude` is located via `$DEVBRIEF_CLAUDE_BIN`, then `PATH`, then falling
@@ -50,14 +55,31 @@ back to `~/.local/bin/claude`. `launchd` jobs don't inherit your shell's
 ### Install the scheduled job (manual, one-time)
 
 ```bash
-cp launchd/com.maneesh.devbrief.daily.plist ~/Library/LaunchAgents/
+sed "s|__HOME__|$HOME|g" launchd/com.maneesh.devbrief.daily.plist \
+  > ~/Library/LaunchAgents/com.maneesh.devbrief.daily.plist
 launchctl load ~/Library/LaunchAgents/com.maneesh.devbrief.daily.plist
 # to test immediately instead of waiting for 19:00:
 launchctl start com.maneesh.devbrief.daily
 ```
 
-Edit the `Hour`/`Minute` in the plist before copying it if 19:00 local isn't
+Edit the `Hour`/`Minute` in the plist before installing it if 19:00 local isn't
 the right time.
+
+## Menu-bar app (macOS)
+
+`DevBriefMenuBar/` is a native SwiftUI menu-bar app that drives the CLI:
+generate a date range (or preview it without saving), toggle the daily job,
+launch at login, per-source tracking, edit the prompt, and browse recent
+entries.
+
+Download `DevBriefMenuBar.zip` from the latest GitHub release, unzip, and move
+it to `/Applications`. The release is ad-hoc signed, so on first launch
+right-click the app and choose **Open** (or run `xattr -dr com.apple.quarantine
+/Applications/DevBriefMenuBar.app`). The app expects the CLI at
+`~/.local/bin/devbrief` (see Setup) or at `$DEVBRIEF_BIN`.
+
+To build it yourself: open `DevBriefMenuBar/DevBriefMenuBar.xcodeproj` in
+Xcode and run the `DevBriefMenuBar` scheme.
 
 ## Manual use
 
